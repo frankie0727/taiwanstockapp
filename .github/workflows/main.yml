@@ -1,0 +1,53 @@
+name: Auto Update Stock Data
+
+on:
+  workflow_dispatch: {}
+  schedule:
+    - cron: '0 0 * * *'
+
+jobs:
+  update-data:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write 
+    
+    steps:
+    - name: Checkout Repository
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Setup Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.10'
+
+    - name: Install Packages
+      run: pip install pandas requests
+
+    - name: Run Python Script
+      run: python fetch_tdcc_data.py
+
+    - name: Save Data to GitHub
+      run: |
+        git config --local user.email "action@github.com"
+        git config --local user.name "GitHub Action"
+        
+        # 1. 關鍵步驟：將剛產出的資料搬移到系統暫存區 (/tmp)，讓 Git 資料夾變乾淨
+        if [ -f high_concentration_stocks.json ]; then
+          mv high_concentration_stocks.json /tmp/high_concentration_stocks.json
+        fi
+        
+        # 2. 強制同步遠端狀態，將本地環境重設為與雲端一模一樣
+        git fetch origin main
+        git reset --hard origin/main
+        
+        # 3. 將資料從暫存區搬回來，覆蓋掉舊的檔案
+        if [ -f /tmp/high_concentration_stocks.json ]; then
+          mv /tmp/high_concentration_stocks.json high_concentration_stocks.json
+        fi
+        
+        # 4. 提交變更並推送
+        git add high_concentration_stocks.json
+        git commit -m "🤖 自動更新：大戶資料與真實 K 線走勢" || echo "No changes to commit"
+        git push origin main
